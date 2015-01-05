@@ -1,0 +1,17 @@
+TYPES: BEGIN OF ty_report,
+nivel TYPE ewjobsio10, " 1.0
+GROUP TYPE group20,    " 1.0
+saknr TYPE ska1-saknr, " 1.0
+txt50 TYPE skat-txt50, " 1.0
+mitkz TYPE pes_296nat, " 1.0
+END OF ty_report.
+TYPES: tty_report TYPE TABLE OF ty_report.
+DATA: t_report TYPE TABLE OF ty_report,
+    w_report TYPE ty_report.
+************************************************************************
+
+" Para importar la tabla de nodos de FSE3
+DATA: gt_node TYPE TABLE OF snodetext.
+
+" Para tamaño de tablas
+DATA: lineas TYPE I.
