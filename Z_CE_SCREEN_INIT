@@ -1,0 +1,13 @@
+INITIALIZATION.
+
+* Para los botones de la pantalla de seleccion
+CLEAR functxt.
+functxt-icon_id   = icon_information.
+functxt-quickinfo = 'Ver Ayuda'.
+*functxt-icon_text = 'Ayuda'.
+sscrfields-functxt_01 = functxt.
+*CLEAR functxt.
+*functxt-icon_id   = ICON_INFORMATION.
+*functxt-quickinfo = 'Ayuda'.
+*functxt-icon_text = 'Ver Ayuda'.
+*sscrfields-functxt_02 = functxt.
