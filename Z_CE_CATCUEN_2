@@ -1,0 +1,82 @@
+REPORT z_ce_catcuen_2.
+
+INCLUDE z_ce_catcuen_2_a. " Variables Globales
+INCLUDE z_ce_screen. " Pantalla de selección --------------------------|
+INCLUDE z_ce_catcuen_2_screen. " Pantalla de selección para catálogo   |
+INCLUDE z_ce_screen_events. " Pantalla de selección eventos -----------|
+INCLUDE z_ce_screen_init. " Pantalla de selección init-----------------|
+INCLUDE z_ce_catcuen_2_init. " Pantalla de selección init del catalogo
+INCLUDE z_ce_valid_bukrs. "Valida Sociedad
+INCLUDE z_ce_catcuen_2_xml. " Subroutines para formar XML
+INCLUDE z_ce_catcuen_2_b. " Subroutines del programa
+
+START-OF-SELECTION.
+
+*BAPI_USER_GET_DETAIL
+
+  " Validar si La sociedad y la estructura de balance utilizan el mismo plan de cuentas.
+  PERFORM: valida_bukrs_versn.
+  PERFORM: obten_info.
+  PERFORM: arma_tabla.
+
+END-OF-SELECTION.
+
+  IF r1 EQ 'X'. " Mostrar ALV
+    PERFORM: muestra_alv.
+  ELSE.
+
+    " Genera XML, depende del tipo tty_report
+    DATA: xml_doc TYPE REF TO if_ixml_document.
+    DATA: t_binxml TYPE tty_binxml.
+    DATA: v_binsize TYPE i.
+    PERFORM: genera_xml USING t_report
+                     CHANGING xml_doc
+                              t_binxml   " XML en binario
+                              v_binsize. " Tamaño del binario
+
+    IF r2 EQ 'X'. "Mostrar XML
+      " Genera XML regresa una tabla binaria,
+      " se debe convertir la tabla binaria en xstring para
+      " mostrarse en pantalla
+      DATA: lv_xstring TYPE xstring.
+      CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+        EXPORTING
+          input_length = v_binsize
+        IMPORTING
+          buffer       = lv_xstring
+        TABLES
+          binary_tab   = t_binxml.
+
+*   Just to show the xml .
+      cl_srtg_helper=>write_utf8_xmldoc(
+                      doc              = lv_xstring
+                      use_html_control = 'X'
+      ).
+
+    ENDIF.
+
+    IF r3 EQ 'X'. "Bajar XML
+
+      DATA: lv_filename TYPE string.
+      CLEAR lv_filename.
+      CONCATENATE gs_bukrs-name2
+                  p_ajahr
+                  p_mth
+                  'CT' " <- indicador de catalogo de cuentas
+                  '.XML'
+             INTO lv_filename.
+
+      IF zip EQ 'X'.
+        " Bajar XML en ZIP
+        PERFORM: descarga_xml_zip USING lv_filename
+                                        t_binxml
+                                        v_binsize.
+      ELSE.
+        " Bajar XML
+        PERFORM: descarga_xml USING lv_filename
+                                    t_binxml
+                                    v_binsize.
+      ENDIF.
+    ENDIF.
+
+  ENDIF.
