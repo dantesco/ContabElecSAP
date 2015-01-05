@@ -1,0 +1,614 @@
+*&---------------------------------------------------------------------*
+*&  Include           Z_CE_CATCUEN_2_B
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      Form  OBTEN_INFO
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM obten_info .
+
+  " Proceso lectura de balance
+  REFRESH gt_node.
+  SUBMIT z_ce_fse3 WITH versn = p_versn AND RETURN.
+  IMPORT t_node TO gt_node FROM MEMORY ID 'CTAB'.
+
+* Borrar las cuentas individuales
+  DELETE gt_node WHERE TYPE EQ 'G'.
+
+ENDFORM.                    " OBTEN_INFO
+*&---------------------------------------------------------------------*
+*&      Form  MUESTRA_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM muestra_alv .
+  DATA: r_table TYPE REF TO cl_salv_table.
+
+  TRY.
+    cl_salv_table=>factory(
+    EXPORTING
+      list_display   = if_salv_c_bool_sap=>true
+*    list_display   = IF_SALV_C_BOOL_SAP=>FALSE
+*    r_container    =
+*    container_name =
+    IMPORTING
+      r_salv_table   = r_table
+    CHANGING
+      t_table        = t_report
+      ).
+  CATCH cx_salv_msg.    "
+  ENDTRY.
+
+  DATA: r_functions TYPE REF TO cl_salv_functions.
+  r_functions = r_table->get_functions( ).
+  r_functions->set_all( ).
+
+  DATA: r_selections TYPE REF TO cl_salv_selections.
+  r_selections = r_table->get_selections( ).
+*  r_selections->set_selection_mode( 3 ). " Multiple select
+
+  DATA: r_columns TYPE REF TO cl_salv_columns.
+  r_columns = r_table->get_columns( ).
+  r_columns->set_optimize( ).
+*****
+*  DATA: p_ddic TYPE salv_s_ddic_reference,
+*        ir_columns TYPE REF TO cl_salv_columns_table,
+*        ir_column  TYPE REF TO cl_salv_column_table,
+*        ex_msg  TYPE REF TO  cx_salv_not_found.
+*
+*  p_ddic-table = 'SKB1'.
+*  p_ddic-field = 'MITKZ'.
+*
+*  ir_columns = r_table->get_columns( ).
+*  TRY.
+*      ir_column ?= ir_columns->get_column( p_ddic-field ).
+*      ir_column->set_ddic_reference( p_ddic ).
+*      ir_column->set_f4( if_salv_c_bool_sap=>true ).
+*    CATCH cx_salv_not_found INTO ex_msg.
+*      MESSAGE ex_msg TYPE 'I'.
+*  ENDTRY.
+*****
+
+
+
+  DATA: r_aggregations TYPE REF TO cl_salv_aggregations.
+  r_aggregations = r_table->get_aggregations( ).
+*  r_aggregations->add_aggregation( ).
+
+  DATA: lo_header  TYPE REF TO cl_salv_form_layout_grid,
+        lo_h_label TYPE REF TO cl_salv_form_label,
+        lo_h_flow  TYPE REF TO cl_salv_form_layout_flow.
+*
+*   header object
+  CREATE OBJECT lo_header.
+
+*   information in Bold
+  lo_h_label = lo_header->create_label( row = 1 column = 1 ).
+  lo_h_label->set_text( gs_bukrs-name1 ).
+  lo_h_label = lo_header->create_label( row = 1 column = 2 ).
+  lo_h_label->set_text( gs_bukrs-name2 ).
+*
+*   information in tabular format
+  lo_h_flow = lo_header->create_flow( row = 2  column = 1 ).
+  lo_h_flow->create_text( TEXT = 'Plan de cuentas: ' ).
+  lo_h_flow = lo_header->create_flow( row = 2  column = 2 ).
+  lo_h_flow->create_text( TEXT = gs_bukrs-ktopl ).
+
+  lo_h_flow = lo_header->create_flow( row = 3  column = 1 ).
+  lo_h_flow->create_text( TEXT = 'Año: ' ).
+  lo_h_flow = lo_header->create_flow( row = 3  column = 2 ).
+  lo_h_flow->create_text( TEXT = p_ajahr ).
+*
+  lo_h_flow = lo_header->create_flow( row = 4  column = 1 ).
+  lo_h_flow->create_text( TEXT = 'Mes: ' ).
+  lo_h_flow = lo_header->create_flow( row = 4  column = 2 ).
+**
+  DATA : v_ltx LIKE t247-ltx,
+        v_ktx LIKE t247-ktx.
+
+  SELECT SINGLE ktx
+  ltx
+  INTO (v_ktx , v_ltx)
+  FROM t247
+  WHERE spras = sy-langu AND
+  mnr EQ p_mth.
+**
+  lo_h_flow->create_text( TEXT = v_ltx ).
+*
+*  DESCRIBE TABLE t_report LINES lineas.
+  lo_h_flow = lo_header->create_flow( row = 5  column = 1 ).
+  lo_h_flow->create_text( TEXT = 'Total cuentas: ' ).
+  lo_h_flow = lo_header->create_flow( row = 5  column = 2 ).
+  lo_h_flow->create_text( TEXT = lineas ).
+*
+*   set the top of list using the header for Online.
+  r_table->set_top_of_list( lo_header ).
+*
+*   set the top of list using the header for Print.
+  r_table->set_top_of_list_print( lo_header ).
+
+
+  r_table->display( ).
+ENDFORM.                    " MUESTRA_ALV
+*&---------------------------------------------------------------------*
+*&      Form  MUESTRA_XML
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM genera_xml USING lt_report TYPE tty_report
+             CHANGING lo_do     TYPE REF TO if_ixml_document
+                      t_binxml  TYPE tty_binxml
+                      v_size    TYPE I
+                      .
+    " Nombre de la subrutina
+    CONSTANTS: lv_subroutine type c LENGTH 20 VALUE 'GEN_XML'.
+
+    DATA: gr_error TYPE REF TO cx_dynamic_check.
+    DATA: gv_message TYPE string.
+    data: lv_dummy.
+
+  TRY .
+
+*    PERFORM (lv_subroutine) in PROGRAM Z_CE_CATCUEN_2_XML if FOUND
+    PERFORM GEN_XML     USING lt_report
+                              p_rvers " version
+                              p_ajahr " año
+                              p_mth " mes
+                              gs_bukrs-name2 " RFC
+                     CHANGING lo_do
+                              t_binxml
+                              v_size.
+
+  CATCH CX_SY_DYN_CALL_PARAM_MISSING INTO gr_error.
+    gv_message = gr_error->get_text( ).
+    MESSAGE gv_message type 'I'.
+  CATCH CX_SY_DYN_CALL_ILLEGAL_TYPE into gr_error.
+    gv_message = gr_error->get_text( ).
+    MESSAGE gv_message type 'I'.
+  CATCH CX_SY_DYN_CALL_PARAM_NOT_FOUND INTO gr_error.
+  gv_message = gr_error->get_text( ).
+  MESSAGE gv_message TYPE 'I'.
+
+  ENDTRY.
+
+ENDFORM.                    " MUESTRA_XML
+*&---------------------------------------------------------------------*
+*&      Form  DESCARGA_XML
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM descarga_xml USING lv_filename TYPE string
+                        t_binxml TYPE tty_binxml
+                        v_size TYPE I.
+
+  DATA: lv_path TYPE string,
+        lv_fullp TYPE string.
+
+  DATA: lv_file TYPE string,
+        lv_ext TYPE string.
+
+  SPLIT lv_filename AT '.' INTO lv_file lv_ext.
+
+  DATA: usract TYPE I.
+
+  CONCATENATE lv_file '.XML'
+  INTO lv_filename
+  .
+
+  cl_gui_frontend_services=>file_save_dialog(
+  EXPORTING
+    window_title              = 'Descarga XML'
+*      default_extension         = '.XML'
+    default_file_name         = lv_filename "'*.XML'
+*      with_encoding             =
+    file_filter               = '(*.XML)|*.XML|'
+*      initial_directory         =
+*      prompt_on_overwrite       = 'X'
+  CHANGING
+    filename                  = lv_filename
+    path                      = lv_path
+    fullpath                  = lv_fullp
+    user_action               = usract
+*      file_encoding             =
+  EXCEPTIONS
+    cntl_error                = 1
+    error_no_gui              = 2
+    not_supported_by_gui      = 3
+    invalid_default_file_name = 4
+    OTHERS                    = 5
+    ).
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+  CHECK usract EQ '0'.
+
+  CALL METHOD cl_gui_frontend_services=>gui_download
+  EXPORTING
+    bin_filesize            = v_size
+    filename                = lv_fullp
+    filetype                = 'BIN'
+  CHANGING
+    data_tab                = t_binxml
+  EXCEPTIONS
+    file_write_error        = 1
+    no_batch                = 2
+    gui_refuse_filetransfer = 3
+    invalid_type            = 4
+    no_authority            = 5
+    unknown_error           = 6
+    header_not_allowed      = 7
+    separator_not_allowed   = 8
+    filesize_not_allowed    = 9
+    header_too_long         = 10
+    dp_error_create         = 11
+    dp_error_send           = 12
+    dp_error_write          = 13
+    unknown_dp_error        = 14
+    access_denied           = 15
+    dp_out_of_memory        = 16
+    disk_full               = 17
+    dp_timeout              = 18
+    file_not_found          = 19
+    dataprovider_exception  = 20
+    control_flush_error     = 21
+    not_supported_by_gui    = 22
+    error_no_gui            = 23
+    OTHERS                  = 24.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+**   Display the XML document on the screen:
+*  CALL FUNCTION 'SDIXML_DOM_TO_SCREEN'
+*  EXPORTING
+*    document    = lo_document
+*  EXCEPTIONS
+*    no_document = 1
+*    OTHERS      = 2.
+
+*
+******************PARA BAJAR AL SERVIDOR*******************************
+***********************************************************************
+**** Create Output Stream and Render **********************************
+***********************************************************************
+
+*  DATA:
+*        lo_streamfactory  TYPE REF TO if_ixml_stream_factory,
+*        lo_ostream        TYPE REF TO if_ixml_ostream,
+*        lo_renderer       TYPE REF TO if_ixml_renderer,
+*        lo_encoding       TYPE REF TO if_ixml_encoding,
+*        lv_rc             TYPE i,
+*        lv_xml_size       TYPE i.
+*****
+*
+*
+*****
+** Set encoding
+*  lo_encoding = lo_ixml->create_encoding( character_set = 'UTF-8'
+*                                            byte_order = if_ixml_encoding=>co_none ).
+*
+** Create Stream Factory
+*  lo_streamfactory = lo_ixml->create_stream_factory( ).
+*
+** Crate Output Stream
+*  lo_ostream  = lo_streamfactory->create_ostream_uri( system_id = '/var/JUMEX/EDIX/IFISCAL/ar.xml' ).
+*  lo_ostream->set_encoding( encoding = lo_encoding ).
+*
+** Craete renderer
+*  lo_renderer = lo_ixml->create_renderer( ostream  = lo_ostream
+*  document = lo_document ).
+** Set Pretty Print
+*  lo_ostream->set_pretty_print( 'X' ).
+*
+** Render
+*  lv_rc = lo_renderer->render( ).
+*
+** Get XML file size
+*  lv_xml_size = lo_ostream->get_num_written_raw( ).
+*
+** Display Output
+*  WRITE : 'XML File: ', '/var/JUMEX/EDIX/IFISCAL/ar.xml', lv_xml_size,  'Bytes'.
+ENDFORM.                    " DESCARGA_XML
+*&---------------------------------------------------------------------*
+*&      Form  VALIDA_XML
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM valida_xml .
+
+  SUBMIT rpcxmlk0_validate AND RETURN.
+
+ENDFORM.                    " VALIDA_XML
+
+*&---------------------------------------------------------------------*
+*&      Form  SPLIT_NODENAME
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LW_NODES_NAME  text
+*      -->P_GS_VERSN_KTOPL  text
+*      <--P_LV_LOW  text
+*      <--P_LV_HIGH  text
+*----------------------------------------------------------------------*
+FORM split_nodename  USING    nodes_name
+      ktopl
+CHANGING p_lv_low
+  p_lv_high.
+
+  DATA lv_dummy TYPE C.
+  DATA v1 TYPE C LENGTH 30.
+  DATA v2 TYPE C LENGTH 30.
+
+  SPLIT nodes_name AT ktopl INTO lv_dummy v1.
+  SPLIT v1 AT '-' INTO v1 v2.
+  CONDENSE v1.
+  CONDENSE v2.
+
+  p_lv_low = v1.
+  p_lv_high = v2.
+
+ENDFORM.                    " SPLIT_NODENAME
+*&---------------------------------------------------------------------*
+*&      Form  ARMA_TABLA_2
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM arma_tabla .
+
+  DATA: t_skb1 TYPE TABLE OF skb1,
+        w_skb1 TYPE skb1.
+  DATA: t_skat TYPE TABLE OF skat,
+        w_skat TYPE skat.
+
+  DATA: lv_mitkz TYPE mitkz.
+  DATA: null TYPE C.
+  DATA: lw_node TYPE snodetext.
+
+  DATA lv_low TYPE C LENGTH 30.
+  DATA lv_high TYPE C LENGTH 30.
+
+  DATA: ls_saknr TYPE RANGE OF saknr,
+        lw_saknr LIKE LINE OF ls_saknr.
+
+  DATA: lt_node TYPE TABLE OF snodetext,
+        lws_node TYPE snodetext.
+
+  lt_node = gt_node.
+
+** gt_node no debe ser ordenado **
+  LOOP AT gt_node INTO lw_node WHERE TYPE EQ 'A'.
+
+    READ TABLE lt_node INTO lws_node WITH KEY ID = lw_node-parent
+    BINARY SEARCH.
+    IF sy-subrc EQ 0.
+
+      CLEAR w_report-nivel.
+*    w_report-nivel = lw_nodes-name.
+      w_report-nivel = '1'.
+
+      CLEAR w_report-GROUP.
+      CLEAR lv_mitkz.
+      w_report-GROUP = lws_node-name.
+      SPLIT lws_node-TEXT AT space INTO lv_mitkz null.
+      w_report-mitkz = lv_mitkz.
+
+      CLEAR w_report-saknr.
+      CLEAR w_report-txt50.
+      CLEAR: lv_low, lv_high.
+
+      PERFORM split_nodename USING lw_node-name
+                                   gs_versn-ktopl
+                          CHANGING lv_low
+                                   lv_high.
+      CLEAR lw_saknr.
+      REFRESH ls_saknr.
+      lw_saknr-SIGN = 'I'.
+      lw_saknr-option = 'BT'.
+      lw_saknr-low = lv_low.
+      lw_saknr-high = lv_high.
+      APPEND lw_saknr TO ls_saknr.
+
+      CHECK ls_saknr IS NOT INITIAL.
+
+      SELECT *
+      FROM skb1
+      INTO
+      TABLE t_skb1
+*  FOR ALL ENTRIES IN lt_saknr
+      WHERE bukrs = p_bukrs
+      AND saknr IN ls_saknr
+      AND xloeb EQ space. " no borrado
+
+      CHECK sy-subrc = 0.
+
+      SELECT *
+      FROM skat
+      INTO
+      TABLE t_skat
+      FOR ALL ENTRIES IN t_skb1
+      WHERE spras = sy-langu "'S'
+      AND ktopl = gs_bukrs-ktopl "p_ktopl
+      AND saknr = t_skb1-saknr.
+
+      CLEAR w_skb1.
+      LOOP AT t_skb1 INTO w_skb1.
+        w_report-saknr = w_skb1-saknr.
+        CLEAR w_skat.
+        READ TABLE t_skat INTO w_skat WITH KEY ktopl = gs_bukrs-ktopl "w_report-ktopl
+        saknr = w_report-saknr .
+*                                                          BINARY SEARCH.
+        IF sy-subrc EQ 0.
+          w_report-txt50 = w_skat-txt20.
+        ENDIF.
+
+        APPEND w_report TO t_report.
+
+      ENDLOOP.
+
+    ENDIF.
+
+  ENDLOOP.
+
+
+  SORT t_report BY nivel !GROUP saknr.
+  DESCRIBE TABLE t_report LINES lineas.
+
+ENDFORM.                    " ARMA_TABLA
+*&---------------------------------------------------------------------*
+*&      Form  descarga_xml_zip
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->T_BINXML   text
+*      -->V_SIZE     text
+*----------------------------------------------------------------------*
+*referencia: http://www.saptechnical.com/Tutorials/OOPS/ZIP/Page2.htm
+FORM descarga_xml_zip USING lv_filename type string
+      t_binxml TYPE tty_binxml
+      v_size TYPE I.
+
+
+ data: lv_path TYPE string,
+        lv_fullp TYPE string.
+
+ data: lv_file type string,
+       lv_ext type string.
+
+ split lv_filename at '.' INTO lv_file lv_ext.
+
+  DATA: usract TYPE I.
+
+**************************
+*****  Descarga ZIP ******
+
+  DATA:  oref_zip TYPE REF TO cl_abap_zip.
+  DATA wa_bindata TYPE ty_binxml.
+  DATA lv_xstring TYPE xstring.
+  DATA lv_zip_xstring TYPE xstring.
+  DATA v_zip_size TYPE I.
+  DATA it_zip_bin_data TYPE STANDARD TABLE OF raw255.
+
+  CREATE OBJECT oref_zip.
+
+  CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+  EXPORTING
+*    input_length = v_binsize
+    input_length = v_size
+  IMPORTING
+    BUFFER       = lv_xstring
+  TABLES
+    binary_tab   = t_binxml.
+
+CLEAR lv_filename.
+CONCATENATE lv_file '.XML' into lv_filename.
+
+  oref_zip->add( name    = lv_filename "'catalogo.xml'
+                 content = lv_xstring ).
+
+
+  lv_zip_xstring = oref_zip->save( ).
+
+  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+  EXPORTING
+    BUFFER        = lv_zip_xstring
+  IMPORTING
+    output_length = v_zip_size
+  TABLES
+    binary_tab    = it_zip_bin_data.
+**************************
+
+  CLEAR lv_filename.
+CONCATENATE lv_file '.ZIP' into lv_filename.
+
+* Bajar en ZIP
+  cl_gui_frontend_services=>file_save_dialog(
+  EXPORTING
+    window_title              = 'Descarga XML'
+*    default_extension         = '.XML'
+    default_file_name         = lv_filename "'*.XML'
+*      with_encoding             =
+    file_filter               = '(*.ZIP)|*.ZIP|'
+*      initial_directory         =
+*      prompt_on_overwrite       = 'X'
+  CHANGING
+    filename                  = lv_filename
+    path                      = lv_path
+    fullpath                  = lv_fullp
+    user_action               = usract
+*      file_encoding             =
+  EXCEPTIONS
+    cntl_error                = 1
+    error_no_gui              = 2
+    not_supported_by_gui      = 3
+    invalid_default_file_name = 4
+    OTHERS                    = 5
+    ).
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+  CHECK usract EQ '0'.
+
+  CALL METHOD cl_gui_frontend_services=>gui_download
+  EXPORTING
+    bin_filesize            = v_zip_size
+    filename                = lv_fullp
+    filetype                = 'BIN'
+  CHANGING
+    data_tab                = it_zip_bin_data
+  EXCEPTIONS
+    file_write_error        = 1
+    no_batch                = 2
+    gui_refuse_filetransfer = 3
+    invalid_type            = 4
+    no_authority            = 5
+    unknown_error           = 6
+    header_not_allowed      = 7
+    separator_not_allowed   = 8
+    filesize_not_allowed    = 9
+    header_too_long         = 10
+    dp_error_create         = 11
+    dp_error_send           = 12
+    dp_error_write          = 13
+    unknown_dp_error        = 14
+    access_denied           = 15
+    dp_out_of_memory        = 16
+    disk_full               = 17
+    dp_timeout              = 18
+    file_not_found          = 19
+    dataprovider_exception  = 20
+    control_flush_error     = 21
+    not_supported_by_gui    = 22
+    error_no_gui            = 23
+    OTHERS                  = 24.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+
+ENDFORM.                    " DESCARGA_XML_ZIP
