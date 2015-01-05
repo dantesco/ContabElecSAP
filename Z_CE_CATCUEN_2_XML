@@ -1,0 +1,421 @@
+* Declaraciones para el XML
+CONSTANTS:  line_length TYPE i VALUE 4096.
+TYPES:      ty_binxml TYPE x LENGTH line_length,
+            tty_binxml TYPE STANDARD TABLE OF ty_binxml.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  gen_xml
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->LT_REPORT    text
+*      -->P_RVERS      text
+*      -->P_AJAHR      text
+*      -->P_MTH        text
+*      -->P_RFC        text
+*      -->LO_DOCUMENT  text
+*      -->T_BINXML     text
+*      -->V_SIZE       text
+*----------------------------------------------------------------------*
+FORM gen_xml  USING lt_report TYPE tty_report
+      p_rvers TYPE rvers
+      p_ajahr TYPE ajahr
+      p_mth TYPE mth
+      p_rfc TYPE ad_name2
+CHANGING lo_document TYPE REF TO if_ixml_document
+  t_binxml TYPE tty_binxml
+  v_size TYPE i
+  .
+
+  DATA: lo_ixml TYPE REF TO if_ixml.
+  DATA: streamfactory TYPE REF TO if_ixml_stream_factory.
+  DATA: stream        TYPE REF TO if_ixml_ostream.
+  DATA: encoding      TYPE REF TO if_ixml_encoding.
+
+* Create iXML object
+  lo_ixml = cl_ixml=>create( ).
+
+* Stream Factory
+  streamfactory = lo_ixml->create_stream_factory( ).
+  stream = streamfactory->create_ostream_itable( table = t_binxml ).
+
+* Set encoding
+  encoding = lo_ixml->create_encoding( character_set = 'UTF-8'
+  byte_order = if_ixml_encoding=>co_none ).
+  stream->set_encoding( encoding = encoding ).
+
+* Si tiene pretty print lo guarda como Unix
+* Si no tiene pretty print lo guarda como windows
+  stream->set_pretty_print( pretty_print = 'X' ).
+
+*  DATA: lo_document TYPE REF TO if_ixml_document.
+  DATA: lo_catalogo TYPE REF TO if_ixml_element.
+  DATA: lo_cuentas  TYPE REF TO if_ixml_element.
+
+  lo_document = lo_ixml->create_document( ).
+
+* render the xml header
+  lo_document->render( ostream = stream ).
+
+  CASE p_rvers.
+    WHEN '1.0'.
+* Graba Header:
+      PERFORM xml_header_1_0 USING: lo_document lo_catalogo
+            '1.0'                          " version
+*      p_rvers                          " version
+            'catalogocuentas'                " prefijo
+            'Catalogo'                       " Nodo
+            'xmlns'                          " prefijo namespace
+            'http://www.sat.gob.mx/catalogo' " url namespace
+            '2014'                          " Año
+*      p_ajahr                          " Año
+            '01'                            " Mes
+*      p_mth                            " Mes
+            lineas                           " TotalCtas
+            'CEL47...'.                  " RFC
+
+      PERFORM xml_detalle_1_0 USING: lo_document lo_catalogo
+            lo_cuentas
+            'catalogocuentas'
+            'Ctas'
+            lt_report.
+
+    WHEN '1.1'.
+
+* Graba Header:
+      DATA: lv_header TYPE string.
+      PERFORM xml_header_1_1 USING: lo_document lo_catalogo
+            p_rvers                          " version
+            'catalogocuentas'                " prefijo
+            'Catalogo'                       " Nodo
+            'xmlns'                          " prefijo namespace
+            'www.sat.gob.mx/esquemas/ContabilidadE/1_1/CatalogoCuentas' " url namespace 1.1
+            p_ajahr                          " Año
+            p_mth                            " Mes
+            " Version 1.1 ya no muestra total de cuentas
+*        lineas                           " TotalCtas
+            p_rfc                             " RFC
+      CHANGING lv_header.
+
+*stream->write_string( '<catalogocuentas:Catalogo>' ).
+      stream->write_string( lv_header ).
+
+* Graba detalle
+      PERFORM xml_detalle_1_1 USING: lo_document lo_catalogo
+            lo_cuentas
+            'catalogocuentas'
+            'Ctas'
+            lt_report
+            stream.
+
+* close the root node
+      stream->write_string( '</catalogocuentas:Catalogo>' ).
+      stream->close( ).
+
+    WHEN OTHERS.
+  ENDCASE.
+
+  "data ressize type i.
+  v_size = stream->get_num_written_raw( ).
+
+ENDFORM.                    " GEN_XML_1_1
+*&---------------------------------------------------------------------*
+*&      Form  xml_header_1_1
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->LO_DOC     text
+*      -->LO_CAT     text
+*      -->P_RVERS    text
+*      -->P_PFIX     text
+*      -->P_ENAME    text
+*      -->P_PFIXNS   text
+*      -->P_URLNS    text
+*      -->P_AJAHR    text
+*      -->P_MTH      text
+*      -->P_RFC      text
+*      -->V_HEADER   text
+*----------------------------------------------------------------------*
+FORM xml_header_1_1  USING    lo_doc TYPE REF TO if_ixml_document
+      lo_cat TYPE REF TO if_ixml_element
+      p_rvers     " version
+      p_pfix      " prefijo
+      p_ename     " elemento
+      p_pfixns    " prefijo namespace
+      p_urlns     " url namespace
+      p_ajahr     " Año
+      p_mth       " Mes
+*      p_tot       " TotalCtas
+      p_rfc      " RFC
+CHANGING v_header TYPE string.
+
+  DATA lv_node TYPE string.
+  DATA lv_vers TYPE string.
+  DATA lv_rfc TYPE string.
+  DATA lv_mth TYPE string.
+  DATA lv_ajahr TYPE string.
+  DATA lv_namespace TYPE string.
+
+  CONCATENATE '<' p_pfix ':' p_ename INTO lv_node.
+  CONCATENATE 'Version="' p_rvers '"' INTO lv_vers.
+  CONCATENATE 'RFC="' p_rfc '"' INTO lv_rfc.
+  CONCATENATE 'Mes="' p_mth '"' INTO lv_mth.
+  CONCATENATE 'Anio="' p_ajahr '"' INTO lv_ajahr.
+  CONCATENATE p_pfixns
+  ':'
+  p_pfix'="'
+  p_urlns
+  '">'
+  INTO lv_namespace.
+
+
+  CONCATENATE lv_node
+*              ' '
+  lv_vers
+*              ' '
+  lv_rfc
+*              ' '
+  lv_mth
+*              ' '
+  lv_ajahr
+*              ' '
+  lv_namespace
+  INTO v_header
+  SEPARATED BY space.
+
+  lo_cat  = lo_doc->create_simple_element_ns(
+  name   = p_ename
+  parent = lo_doc
+  prefix = p_pfix
+  uri    = p_urlns
+  ).
+*  lo_doc->append_child( new_child = lo_cat ).
+*
+*  DATA: lv_attr TYPE string.
+*  CONCATENATE p_pfixns ':' p_pfix INTO lv_attr.
+*  lo_cat->set_attribute( name  = lv_attr
+*  VALUE = p_urlns ).
+*
+*  DATA: lv_ano TYPE string.
+*  lv_ano = p_ajahr.
+*  lo_cat->set_attribute( name  = 'Anio'
+*  VALUE = lv_ano ).
+*
+*  DATA: lv_mes TYPE string.
+*  lv_mes = p_mth.
+*  lo_cat->set_attribute( name  = 'Mes'
+*  VALUE = lv_mes ).
+*
+*  DATA: lv_rfc TYPE string.
+*  lv_rfc = p_rfc.
+*  lo_cat->set_attribute( name  = 'RFC'
+*  VALUE = lv_rfc ).
+*
+*  DATA: lv_vers TYPE string.
+*  lv_vers = p_rvers.
+*  lo_cat->set_attribute( name  = 'Version'
+*  VALUE = lv_vers ).
+ENDFORM.                    " XML_HEADER
+*&---------------------------------------------------------------------*
+*&      Form  XML_DETALLE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->lo_cat type REF TO if_ixml_element
+*      -->lo_cuen type REF TO if_ixml_element
+*      -->p_pfix
+*      -->p_node
+*      --> p_lt_report type tty_report.
+*----------------------------------------------------------------------*
+FORM xml_detalle_1_1  USING   lo_doc TYPE REF TO if_ixml_document
+      lo_cat TYPE REF TO if_ixml_element
+      lo_cuen TYPE REF TO if_ixml_element
+      p_pfix
+      p_node
+      p_lt_report TYPE tty_report
+      stream TYPE REF TO if_ixml_ostream "
+      .
+
+  DATA: lv_natur TYPE string,
+        lv_nivel TYPE string,
+        lv_desc TYPE string,
+        lv_numcta TYPE string,
+        lv_codgrup TYPE string.
+
+  DATA: node TYPE REF TO if_ixml_node.
+
+  LOOP AT p_lt_report INTO w_report.
+
+    lo_cuen = lo_doc->create_simple_element_ns(
+    name   = p_node
+    parent = lo_cat
+    prefix = p_pfix
+    ).
+*    lo_doc->append_child( new_child = lo_cuen ).
+    lo_cat->append_child( new_child = lo_cuen ).
+
+    CLEAR lv_natur.
+    lv_natur = w_report-mitkz.
+    lo_cuen->set_attribute( name  = 'Natur'
+    value = lv_natur ).
+
+    CLEAR lv_nivel.
+    lv_nivel = w_report-nivel.
+    lo_cuen->set_attribute( name  = 'Nivel'
+    value = lv_nivel ).
+
+    CLEAR lv_desc.
+    lv_desc = w_report-txt50.
+    lo_cuen->set_attribute( name  = 'Desc'
+    value = lv_desc ).
+
+    CLEAR lv_numcta.
+    lv_numcta = w_report-saknr.
+    lo_cuen->set_attribute( name  = 'NumCta'
+    value = lv_numcta ).
+
+    CLEAR lv_codgrup.
+    lv_codgrup = w_report-group.
+    lo_cuen->set_attribute( name  = 'CodAgrup'
+    value = lv_codgrup ).
+
+    lo_cat->append_child( new_child = lo_cuen ).
+
+* get the document's first child and render it
+*    node = lo_doc->get_first_child( ).
+    node = lo_cat->get_first_child( ).
+    node->render( ostream = stream  recursive = 'X' ).
+
+* remove all nodes from the document so that the DOM stays confined
+*    lo_doc->remove_node( ).
+    lo_cat->remove_node( ).
+
+  ENDLOOP.
+
+ENDFORM.                    " XML_DETALLE
+*&---------------------------------------------------------------------*
+*&      Form  XML_HEADER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->lo_cat type REF TO if_ixml_element
+*      -->p_rvers     " version
+*      -->p_pfix      " prefijo
+*      -->p_ename     " elemento
+*      -->p_pfixns    " prefijo namespace
+*      -->p_urlns     " url namespace
+*      -->p_ajahr     " Año
+*      -->p_mth       " Mes
+*      -->p_tot       " TotalCtas
+*      -->p_rfc       " RFC
+*----------------------------------------------------------------------*
+FORM xml_header_1_0  USING    lo_doc TYPE REF TO if_ixml_document
+      lo_cat TYPE REF TO if_ixml_element
+      p_rvers     " version
+      p_pfix      " prefijo
+      p_ename     " elemento
+      p_pfixns    " prefijo namespace
+      p_urlns     " url namespace
+      p_ajahr     " Año
+      p_mth       " Mes
+      p_tot       " TotalCtas
+      p_rfc   .   " RFC
+
+
+  lo_cat  = lo_doc->create_simple_element_ns(
+  name   = p_ename
+  parent = lo_doc
+  prefix = p_pfix
+  uri    = p_urlns
+  ).
+  DATA: lv_attr TYPE string.
+  CONCATENATE p_pfixns ':' p_pfix INTO lv_attr.
+  lo_cat->set_attribute( name  = lv_attr
+  value = p_urlns ).
+
+  DATA: lv_ano TYPE string.
+  lv_ano = p_ajahr.
+  lo_cat->set_attribute( name  = 'Ano'
+  value = lv_ano ).
+
+  DATA: lv_mes TYPE string.
+  lv_mes = p_mth.
+  lo_cat->set_attribute( name  = 'Mes'
+  value = lv_mes ).
+
+  DATA: lv_total TYPE string.
+  lv_total = p_tot.
+  CONDENSE lv_total.
+  lo_cat->set_attribute( name  = 'TotalCtas'
+  value = lv_total ).
+
+  DATA: lv_rfc TYPE string.
+  lv_rfc = p_rfc.
+  lo_cat->set_attribute( name  = 'RFC'
+  value = lv_rfc ).
+
+  DATA: lv_vers TYPE string.
+  lv_vers = p_rvers.
+  lo_cat->set_attribute( name  = 'Version'
+  value = lv_vers ).
+ENDFORM.                    " XML_HEADER
+*&---------------------------------------------------------------------*
+*&      Form  XML_DETALLE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->lo_cat type REF TO if_ixml_element
+*      -->lo_cuen type REF TO if_ixml_element
+*      -->p_pfix
+*      -->p_node
+*      --> p_lt_report type tty_report.
+*----------------------------------------------------------------------*
+FORM xml_detalle_1_0  USING   lo_doc TYPE REF TO if_ixml_document
+      lo_cat TYPE REF TO if_ixml_element
+      lo_cuen TYPE REF TO if_ixml_element
+      p_pfix
+      p_node
+      p_lt_report TYPE tty_report.
+
+  DATA: lv_natur TYPE string,
+        lv_nivel TYPE string,
+        lv_desc TYPE string,
+        lv_numcta TYPE string,
+        lv_codgrup TYPE string.
+
+  LOOP AT p_lt_report INTO w_report.
+
+    lo_cuen = lo_doc->create_simple_element_ns(
+    name   = p_node
+    parent = lo_cat
+    prefix = p_pfix
+    ).
+
+    CLEAR lv_natur.
+    lv_natur = w_report-mitkz.
+    lo_cuen->set_attribute( name  = 'Natur'
+    value = lv_natur ).
+
+    CLEAR lv_nivel.
+    lv_nivel = w_report-nivel.
+    lo_cuen->set_attribute( name  = 'Nivel'
+    value = lv_nivel ).
+
+    CLEAR lv_desc.
+    lv_desc = w_report-txt50.
+    lo_cuen->set_attribute( name  = 'Desc'
+    value = lv_desc ).
+
+    CLEAR lv_numcta.
+    lv_numcta = w_report-saknr.
+    lo_cuen->set_attribute( name  = 'NumCta'
+    value = lv_numcta ).
+
+    CLEAR lv_codgrup.
+    lv_codgrup = w_report-group.
+    lo_cuen->set_attribute( name  = 'CodAgrup'
+    value = lv_codgrup ).
+  ENDLOOP.
+
+ENDFORM.                    " XML_DETALLE
