@@ -1,0 +1,59 @@
+*&---------------------------------------------------------------------*
+*&  Include           Z_CE_VALID_BUKRS
+*&---------------------------------------------------------------------*
+" Información de Sociedad
+TYPES: BEGIN OF ty_bukrs,
+bukrs TYPE bukrs,
+ktopl TYPE ktopl,
+name1 TYPE ad_name1,
+name2 TYPE ad_name2,
+END OF ty_bukrs.
+DATA: gs_bukrs TYPE ty_bukrs.
+
+" Información de balance
+TYPES: BEGIN OF ty_versn,
+versn TYPE t011-versn,
+ktopl TYPE t011-ktopl,
+vstxt TYPE t011t-vstxt,
+END OF ty_versn.
+DATA: gs_versn TYPE ty_versn.
+
+*&---------------------------------------------------------------------*
+*&      Form  VALIDA_BUKRS_VERSN
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM valida_bukrs_versn .
+
+  SELECT
+  SINGLE bukrs
+  ktopl
+  name1
+  name2
+  INTO gs_bukrs "(lv_bukrs, lv_ktopl,lv_name1, lv_name2)
+  FROM t001 JOIN adrc
+  ON t001~adrnr EQ adrc~addrnumber
+  WHERE bukrs EQ p_bukrs.
+
+*   Check if version exists
+
+  SELECT
+  SINGLE t011~versn
+  ktopl
+  vstxt
+  INTO gs_versn
+  FROM t011 JOIN t011t
+  ON t011~versn EQ t011t~versn
+  WHERE t011~versn = p_versn
+  AND dspra EQ sy-langu.
+
+  IF gs_bukrs-ktopl NE gs_versn-ktopl.
+    MESSAGE 'La sociedad y la estructura de balance, no utilizan el mismo plan de cuentas'
+    TYPE 'I'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.                    " VALIDA_BUKRS_VERSN
