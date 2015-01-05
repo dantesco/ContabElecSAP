@@ -1,0 +1,40 @@
+AT SELECTION-SCREEN ON p_rvers.
+CASE p_rvers.
+WHEN '1.0'. " La version 1.0 nunca fue publicada por el SAT
+mess3 = 'La version 1.0 es obsoleta'.
+MESSAGE mess3 TYPE 'E'.
+WHEN '1.1'. " La primer version oficial
+" OK
+*	WHEN '2.0'.
+*  OK
+WHEN OTHERS.
+  mess1 = 'No existen las reglas para generar la versión'.
+  mess2 = 'del xml'.
+  CONCATENATE mess1 p_rvers mess2 INTO mess3 SEPARATED BY space.
+  MESSAGE mess3 TYPE 'E'.
+ENDCASE.
+*
+
+AT SELECTION-SCREEN.
+
+
+CASE sscrfields-ucomm.
+WHEN 'FC01'.
+  " llamar ayuda, texto creado en tcode SE61, clase de documento "texto en diálogo" DT
+  CALL FUNCTION 'DSYS_SHOW_FOR_F1HELP'
+  EXPORTING
+    dokclass         = 'DT'
+    dokname          = 'Z_CE_CATCUEN'
+    doktitle         = 'Contabilidad Electrónica'
+  EXCEPTIONS
+    class_unknown    = 1
+    object_not_found = 2
+    OTHERS           = 3.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+WHEN OTHERS.
+
+ENDCASE.
