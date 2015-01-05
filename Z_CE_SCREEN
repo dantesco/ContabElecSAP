@@ -1,0 +1,28 @@
+CONSTANTS: gv_repid type sy-repid VALUE sy-repid.
+
+" Para las funciones en pantalla
+TABLES sscrfields.
+DATA functxt TYPE smp_dyntxt.
+SELECTION-SCREEN: FUNCTION KEY 1,
+FUNCTION KEY 2,
+FUNCTION KEY 3.
+
+" Valida Versiones
+DATA: mess1 TYPE C LENGTH 45.
+DATA: mess2 TYPE C LENGTH 30.
+DATA: mess3 TYPE C LENGTH 70.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME NO INTERVALS.
+PARAMETERS: "p_ktopl LIKE T004-KTOPL DEFAULT 'CAJX',
+p_bukrs LIKE t001-bukrs OBLIGATORY MEMORY ID buk,
+p_versn TYPE t011-versn OBLIGATORY MEMORY ID bil,
+p_ajahr TYPE ajahr DEFAULT sy-datlo+0(4),
+p_mth   TYPE mth   OBLIGATORY DEFAULT sy-datlo+4(2),
+p_rvers TYPE rvers DEFAULT '1.1'. " <- cambiar cada que se actualize la versión
+SELECTION-SCREEN SKIP.
+PARAMETERS: r1 RADIOBUTTON GROUP rg1,
+r2 RADIOBUTTON GROUP rg1,
+r3 RADIOBUTTON GROUP rg1.
+*            r4 RADIOBUTTON GROUP rg1.
+PARAMETER: zip AS CHECKBOX DEFAULT 'X'.
+SELECTION-SCREEN END OF BLOCK b1.
